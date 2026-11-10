@@ -194,11 +194,22 @@ h1{font-size:28px;margin:0;letter-spacing:-.02em}
   .row::after{display:block;order:9;flex-basis:100%;height:0}
   .row .due{order:10;margin:-4px 0 6px 52px;font-size:12px;padding:2px 8px}
   .d0>.row .due{margin-left:54px}
-  .row .due.empty,.row .addsub{display:none}
+  .row .addsub{display:none}
+  .row .due.empty{order:3;margin:0;opacity:1;font-size:12px;padding:2px 8px}
   .wrap{padding:20px 12px 60px}
   .project{padding:10px 10px 6px}
   .bar{margin-left:40px}
 }
+
+.due .short{display:none}
+.swipe-del{position:absolute;right:0;top:3px;bottom:3px;width:70px;border-radius:9px;background:var(--red);color:#fff;font-size:14px;font-weight:600;opacity:0;pointer-events:none;transform:translateX(14px);transition:opacity .18s,transform .18s;z-index:6}
+.row.swiped .swipe-del{opacity:1;pointer-events:auto;transform:none}
+.row.swiped .more,.row.swiped .count,.row.swiped .due{visibility:hidden}
+.toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,20px);background:var(--ink);color:#fff;border-radius:12px;padding:10px 14px;font-size:14px;display:flex;gap:14px;align-items:center;opacity:0;pointer-events:none;transition:.2s;z-index:60;max-width:90vw}
+.toast.show{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.toast span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.toast button{color:#f6c24a;font-weight:600;flex:none}
+@media (max-width:640px){ .due .full{display:none} .due .short{display:inline} }
 </style>
 </head>
 <body>
@@ -216,6 +227,7 @@ h1{font-size:28px;margin:0;letter-spacing:-.02em}
     <label><input type="checkbox" id="hideDone"> 隐藏已完成</label>
   </div>
   <div id="app"></div>
+  <div class="toast" id="toast"><span></span><button>撤销</button></div>
   <div class="foot"><span id="sync" class="sync"></span></div>
 </div>
 
@@ -372,7 +384,8 @@ function renderNode(n, depth) {
   h += `<textarea class="title" rows="1" data-field="title" placeholder="${PH[Math.min(depth, 2)]}">${esc(n.title)}</textarea>`;
   if (sc) h += `<span class="count">${fmt(sc.s)}/${sc.total}</span>`;
   if (depth >= 1 && depth < MAXD) h += `<button class="addsub" data-act="addChild" title="把这个 task 再分成小步骤">＋ 子项</button>`;
-  h += `<button class="due ${di.cls}" data-act="due">${esc(di.label)}</button>`;
+  h += `<button class="due ${di.cls}" data-act="due">${di.cls === 'empty' ? '<span class="full">＋ deadline</span><span class="short">＋ ddl</span>' : esc(di.label)}</button>`;
+  h += `<button class="swipe-del" data-act="swipeDel">删除</button>`;
   h += `<button class="more" data-act="menu" title="更多">⋯</button>`;
   if (ui.menu === n.id) {
     h += `<div class="menu">`;
@@ -567,6 +580,59 @@ document.addEventListener('click', e => {
   ui.pick = null; render();
 });
 
+
+/* ---------- delete with undo, swipe to delete, backspace on empty ---------- */
+let lastDel = null, toastTimer = null;
+function showToast(text) {
+  const t = $('#toast'); t.querySelector('span').textContent = text; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.classList.remove('show'); lastDel = null; }, 5000);
+}
+function removeNode(f) {
+  lastDel = { parentId: f.parent ? f.parent.id : null, index: f.index, node: f.node };
+  f.list.splice(f.index, 1);
+  const name = f.node.title.trim();
+  showToast(name ? `已删除「${name.length > 14 ? name.slice(0, 14) + '…' : name}」` : '已删除');
+}
+function undoDel() {
+  if (!lastDel) return;
+  const pf = lastDel.parentId ? find(lastDel.parentId) : null;
+  const list = lastDel.parentId ? (pf && pf.node.children) : state.items;
+  if (!list) return;
+  list.splice(Math.min(lastDel.index, list.length), 0, lastDel.node);
+  lastDel = null; $('#toast').classList.remove('show'); save(); render();
+}
+document.querySelector('#toast button').addEventListener('click', undoDel);
+
+let sw = null;
+const clearSwipe = () => app.querySelectorAll('.row.swiped').forEach(r => r.classList.remove('swiped'));
+app.addEventListener('touchstart', e => {
+  const row = e.target.closest('.row'); if (!row || e.target.closest('.picker')) { sw = null; return; }
+  const t = e.touches[0]; sw = { row, x: t.clientX, y: t.clientY, done: false };
+}, { passive: true });
+app.addEventListener('touchmove', e => {
+  if (!sw || sw.done) return;
+  const t = e.touches[0], dx = t.clientX - sw.x, dy = t.clientY - sw.y;
+  if (Math.abs(dy) > Math.abs(dx)) return;
+  if (dx < -40) { clearSwipe(); sw.row.classList.add('swiped'); sw.done = true; if (document.activeElement) document.activeElement.blur(); }
+  else if (dx > 40) { sw.row.classList.remove('swiped'); sw.done = true; }
+}, { passive: true });
+app.addEventListener('touchend', () => { sw = null; });
+document.addEventListener('click', e => {
+  if (!app.querySelector('.row.swiped') || e.target.closest('.swipe-del')) return;
+  clearSwipe(); e.stopPropagation(); e.preventDefault();
+}, true);
+
+app.addEventListener('keydown', e => {
+  const el = e.target;
+  if (!el.classList.contains('title') || e.key !== 'Backspace' || e.isComposing || el.value !== '') return;
+  const f = find(el.closest('.node').dataset.id); if (!f || f.node.children.length) return;
+  e.preventDefault();
+  const prev = f.index > 0 ? f.list[f.index - 1] : f.parent;
+  removeNode(f);
+  if (prev) ui.focus = { id: prev.id, sel: '.title' };
+  save(); render();
+});
+
 /* ---------- actions ---------- */
 function addChild(id) {
   const f = find(id); if (!f || f.depth >= MAXD) return;
@@ -605,9 +671,10 @@ app.addEventListener('click', e => {
       if (n.showNote) ui.focus = { id, sel: '.note' };
       break;
     case 'addChild': addChild(id); break;
+    case 'swipeDel': removeNode(f); break;
     case 'delete':
       if (ui.confirmDel !== id) { ui.confirmDel = id; render(); return; }
-      f.list.splice(f.index, 1); ui.menu = null; ui.confirmDel = null;
+      removeNode(f); ui.menu = null; ui.confirmDel = null;
       break;
     default: return;
   }
