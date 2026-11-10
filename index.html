@@ -116,6 +116,21 @@ h1{font-size:28px;margin:0;letter-spacing:-.02em}
 .modal-foot{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}
 .modal-foot .sum{color:#55555a;font-size:13px;margin-right:auto}
 @media (max-width:640px){.imp-grid{grid-template-columns:1fr}.imp-grid textarea,.pv{height:220px}}
+
+.sub#today{font-size:15px;color:#55555a;margin-top:4px}
+.foot{text-align:center;margin-top:24px}
+.stats:empty{display:none}
+.toolbar{color:var(--muted)}
+.due.empty,.more,.addsub{opacity:0;transition:opacity .12s}
+.row:hover .due.empty,.row:hover .more,.row:hover .addsub,
+.row:focus-within .due.empty,.row:focus-within .more,.row:focus-within .addsub,
+.row.menu-open .more{opacity:1}
+@media (hover:none){.due.empty,.more,.addsub{opacity:1}}
+.addsub{flex:none;font-size:12.5px;color:var(--muted);padding:3px 8px;border-radius:99px}
+.addsub:hover{background:#f1f0ec;color:var(--accent)}
+.add{opacity:.7}.add:hover{opacity:1}
+.project{padding-bottom:6px}
+.d1>.kids .add{padding-left:30px;font-size:13px}
 </style>
 </head>
 <body>
@@ -123,7 +138,7 @@ h1{font-size:28px;margin:0;letter-spacing:-.02em}
   <header>
     <div>
       <h1>Deadline</h1>
-      <div class="sub"><span id="sync" class="sync">加载中…</span></div>
+      <div class="sub" id="today"></div>
     </div>
     <div class="head-btns"><button class="btn-ghost" data-act="import">粘贴导入</button><button class="btn-primary" data-act="newProject">＋ 新建项目</button></div>
   </header>
@@ -131,9 +146,9 @@ h1{font-size:28px;margin:0;letter-spacing:-.02em}
   <div class="toolbar">
     <label><input type="checkbox" id="sortDue"> 按 deadline 排序</label>
     <label><input type="checkbox" id="hideDone"> 隐藏已完成</label>
-    <span class="legend">点圆圈切换：○ 未开始 → ◐ 进行中 → ● 完成</span>
   </div>
   <div id="app"></div>
+  <div class="foot"><span id="sync" class="sync"></span></div>
 </div>
 
 
@@ -196,19 +211,22 @@ function dayLabel(date) {
   const md = `${d.getMonth() + 1}月${d.getDate()}日`;
   return d.getFullYear() === now.getFullYear() ? md : `${d.getFullYear()}年${md}`;
 }
+function fullDate(date) {
+  const d = new Date(date + 'T00:00'), now = new Date();
+  const md = `${d.getMonth() + 1}月${d.getDate()}日 ${WEEK[d.getDay()]}`;
+  return d.getFullYear() === now.getFullYear() ? md : `${d.getFullYear()}年${md}`;
+}
 function dueInfo(n) {
   if (!n.due) return { label: '＋ deadline', cls: 'empty' };
   const d = dueDate(n.due, n.time), now = new Date();
   const dd = Math.round((sod(d) - sod(now)) / 864e5);
-  let label = dayLabel(n.due) + ' ' + (n.time || '23:59');
+  let label = fullDate(n.due);
+  if (n.time && n.time !== '23:59') label += ' ' + n.time;
   if (n.status === 'done') return { label, cls: 'isdone' };
-  if (d < now) {
-    const late = Math.max(0, Math.round((sod(now) - sod(d)) / 864e5));
-    return { label: (late ? `逾期 ${late} 天 · ` : '已过 · ') + label, cls: 'over' };
-  }
-  if (dd <= 1) return { label, cls: 'soon' };
-  if (dd < 7) return { label: label + ` · 还剩 ${dd} 天`, cls: '' };
-  return { label, cls: '' };
+  if (d < now) return { label: label + (dd < 0 ? ` · 逾期 ${-dd} 天` : ' · 已过时间'), cls: 'over' };
+  if (dd === 0) return { label: label + ' · 今天截止', cls: 'soon' };
+  if (dd === 1) return { label: label + ' · 明天截止', cls: 'soon' };
+  return { label: label + ` · 还有 ${dd} 天`, cls: dd <= 3 ? 'soon' : '' };
 }
 
 /* ---------- render ---------- */
@@ -247,11 +265,12 @@ function renderNode(n, depth) {
   const sc = score(n.children);
   const open = !n.collapsed;
   let h = `<div class="node d${depth} ${n.status}" data-id="${n.id}">`;
-  h += `<div class="row">`;
+  h += `<div class="row ${ui.menu === n.id ? 'menu-open' : ''}">`;
   h += hasKids ? `<button class="caret ${open ? 'open' : ''}" data-act="collapse" title="展开/收起">▶</button>` : `<span class="caret-sp"></span>`;
   h += `<button class="circle" data-act="cycle" title="${STATUS_TIP[n.status]}">${circleSvg(n.status)}</button>`;
   h += `<input class="title" data-field="title" value="${esc(n.title)}" placeholder="${PH[depth]}">`;
   if (sc) h += `<span class="count">${fmt(sc.s)}/${sc.total}</span>`;
+  if (depth === 1) h += `<button class="addsub" data-act="addChild" title="把这个 task 再分成小步骤">＋ 子项</button>`;
   h += `<button class="due ${di.cls}" data-act="due">${esc(di.label)}</button>`;
   h += `<button class="more" data-act="menu" title="更多">⋯</button>`;
   if (ui.menu === n.id) {
@@ -318,9 +337,11 @@ function renderStats() {
   });
   $('#stats').innerHTML =
     (over ? `<span class="stat over">逾期 ${over}</span>` : '') +
-    `<span class="stat today">今天到期 ${today}</span>` +
-    `<span class="stat">7 天内 ${week}</span>` +
-    `<span class="stat">进行中 ◐ ${doing}</span>`;
+    (today ? `<span class="stat today">今天截止 ${today}</span>` : '') +
+    (week ? `<span class="stat">7 天内 ${week}</span>` : '') +
+    (doing ? `<span class="stat">进行中 ${doing}</span>` : '');
+  const t = new Date();
+  $('#today').textContent = `今天 ${t.getFullYear()}年${t.getMonth() + 1}月${t.getDate()}日 ${WEEK[t.getDay()]}`;
 }
 
 function render() {
@@ -561,6 +582,7 @@ $('#impOk').addEventListener('click', () => {
 });
 document.querySelector('[data-act="import"]').addEventListener('click', openImport);
 
+setInterval(() => { const a = document.activeElement; if (!(a && a.matches('input,textarea'))) render(); }, 60000);
 render();
 </script>
 </body>
