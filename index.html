@@ -45,7 +45,7 @@ h1{font-size:28px;margin:0;letter-spacing:-.02em}
 .c-ring{fill:none;stroke:#c7c7cc;stroke-width:1.6}
 .circle:hover .c-ring{stroke:var(--accent)}
 .c-half{fill:var(--accent)}
-.half .c-ring{stroke:var(--accent)}
+.half>.row .c-ring{stroke:var(--accent)}
 .c-fill{fill:var(--accent)}
 .c-check{fill:none;stroke:#fff;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
 .title{flex:1;min-width:0;border:0;background:none;outline:none;padding:6px 0}
@@ -131,6 +131,40 @@ h1{font-size:28px;margin:0;letter-spacing:-.02em}
 .add{opacity:.7}.add:hover{opacity:1}
 .project{padding-bottom:6px}
 .d1>.kids .add{padding-left:30px;font-size:13px}
+
+.d3>.row,.d4>.row{border-top:1px solid var(--line)}
+.node:not(.d0)>.kids .add{padding-left:30px;font-size:13px}
+.picker{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;box-shadow:0 6px 20px rgba(0,0,0,.06);margin-top:6px}
+.pk-top{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.pk-date{flex:1;min-width:180px;border:1px solid #dedbd3;border-radius:8px;padding:6px 10px;font-size:14px;outline:none;background:#faf9f6}
+.pk-date:focus{border-color:var(--accent);background:#fff}
+.pk-hint{font-size:13px;color:#8a6a1f}
+.pk-hint.bad{color:var(--red)}
+.pk-body{display:flex;gap:18px;flex-wrap:wrap}
+.cal{width:238px}
+.cal-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;font-size:14px}
+.cal-h button{width:28px;height:28px;border-radius:7px;font-size:16px;color:#55555a}
+.cal-h button:hover{background:#f4f3ef}
+.cal-w,.cal-g{display:grid;grid-template-columns:repeat(7,1fr);text-align:center}
+.cal-w span{font-size:11.5px;color:var(--muted);padding:2px 0}
+.cal-g button,.cal-g span{height:32px;font-size:13.5px;border-radius:8px}
+.cal-g button:hover{background:var(--accent-soft)}
+.cal-g button.past{color:#bbb}
+.cal-g button.today{box-shadow:inset 0 0 0 1.5px var(--accent);color:#8a6a1f;font-weight:600}
+.cal-g button.sel{background:var(--accent);color:#fff;font-weight:600;box-shadow:none}
+.tm{flex:1;min-width:220px}
+.tm-lab{font-size:12px;color:var(--muted);margin:2px 0 6px}
+.tm-g{display:grid;gap:4px;margin-bottom:8px}
+.tm-g button,.tm-def{height:30px;border-radius:8px;font-size:13.5px;background:#f6f5f1}
+.tm-g button:hover,.tm-def:hover{background:var(--accent-soft)}
+.tm-g button.on,.tm-def.on{background:var(--accent);color:#fff;font-weight:600}
+.tm-h{grid-template-columns:repeat(6,1fr)}
+.tm-m{grid-template-columns:repeat(4,1fr)}
+.tm-ap{grid-template-columns:repeat(2,1fr)}
+.tm-def{width:100%;margin-top:2px}
+.pk-foot{display:flex;justify-content:flex-end;align-items:center;gap:14px;margin-top:10px}
+.pk-done{background:var(--ink);color:#fff;border-radius:8px;padding:5px 14px;font-size:13.5px}
+.eta-chip{border:1px solid #ecd9a8;background:#fffdf6;border-radius:99px;padding:2px 10px;font-size:13px;color:#8a6a1f}
 </style>
 </head>
 <body>
@@ -171,7 +205,7 @@ h1{font-size:28px;margin:0;letter-spacing:-.02em}
 <script>
 const LS = 'ddl-board-v1';
 let state = { items: [], updatedAt: 0, prefs: { hideDone: false, sortDue: false } };
-const ui = { editDue: null, menu: null, confirmDel: null, focus: null };
+const ui = { pick: null, menu: null, confirmDel: null, focus: null };
 
 const $ = s => document.querySelector(s);
 const app = $('#app');
@@ -221,7 +255,7 @@ function dueInfo(n) {
   const d = dueDate(n.due, n.time), now = new Date();
   const dd = Math.round((sod(d) - sod(now)) / 864e5);
   let label = fullDate(n.due);
-  if (n.time && n.time !== '23:59') label += ' ' + n.time;
+  if (n.time && n.time !== '23:59') label += ' ' + fmt12(n.time);
   if (n.status === 'done') return { label, cls: 'isdone' };
   if (d < now) return { label: label + (dd < 0 ? ` · 逾期 ${-dd} 天` : ' · 已过时间'), cls: 'over' };
   if (dd === 0) return { label: label + ' · 今天截止', cls: 'soon' };
@@ -268,14 +302,14 @@ function renderNode(n, depth) {
   h += `<div class="row ${ui.menu === n.id ? 'menu-open' : ''}">`;
   h += hasKids ? `<button class="caret ${open ? 'open' : ''}" data-act="collapse" title="展开/收起">▶</button>` : `<span class="caret-sp"></span>`;
   h += `<button class="circle" data-act="cycle" title="${STATUS_TIP[n.status]}">${circleSvg(n.status)}</button>`;
-  h += `<input class="title" data-field="title" value="${esc(n.title)}" placeholder="${PH[depth]}">`;
+  h += `<input class="title" data-field="title" value="${esc(n.title)}" placeholder="${PH[Math.min(depth, 2)]}">`;
   if (sc) h += `<span class="count">${fmt(sc.s)}/${sc.total}</span>`;
-  if (depth === 1) h += `<button class="addsub" data-act="addChild" title="把这个 task 再分成小步骤">＋ 子项</button>`;
+  if (depth >= 1 && depth < MAXD) h += `<button class="addsub" data-act="addChild" title="把这个 task 再分成小步骤">＋ 子项</button>`;
   h += `<button class="due ${di.cls}" data-act="due">${esc(di.label)}</button>`;
   h += `<button class="more" data-act="menu" title="更多">⋯</button>`;
   if (ui.menu === n.id) {
     h += `<div class="menu">`;
-    if (depth < 2) h += `<button data-act="addChild">${ADD[depth]}</button>`;
+    if (depth < MAXD) h += `<button data-act="addChild">${ADD[Math.min(depth, 1)]}</button>`;
     h += `<button data-act="toggleNote">${n.showNote ? '隐藏说明' : '添加说明'}</button>`;
     h += `<button data-act="due">设置 deadline</button>`;
     if (n.status !== 'half') h += `<button data-act="setHalf">标记为进行中 ◐</button>`;
@@ -285,17 +319,7 @@ function renderNode(n, depth) {
   h += `</div>`;
   if (depth === 0 && sc) h += `<div class="bar"><i style="width:${sc.pct}%"></i></div>`;
 
-  if (ui.editDue === n.id) {
-    h += `<div class="panel"><div class="due-edit">
-      <span>截止</span>
-      <input type="date" data-field="due" value="${esc(n.due)}">
-      <input type="time" data-field="time" value="${esc(n.time)}">
-      <span class="hint">${n.time ? '' : '不填时间 = 23:59'}</span>
-      ${n.time ? '<button class="link" data-act="clearTime">用默认 23:59</button>' : ''}
-      ${n.due ? '<button class="link" data-act="clearDue">清除</button>' : ''}
-      <button class="link" data-act="closeDue" style="margin-left:auto">完成</button>
-    </div></div>`;
-  }
+  if (ui.pick && ui.pick.id === n.id && ui.pick.kind === 'due') h += `<div class="panel">${pickerHtml(n, 'due')}</div>`;
   if (n.showNote || n.note) {
     h += `<div class="panel"><textarea class="note" rows="1" data-field="note" placeholder="说明 / 细节…">${esc(n.note)}</textarea></div>`;
   }
@@ -304,22 +328,20 @@ function renderNode(n, depth) {
     const e = dueDate(n.eta, n.etaTime), d = dueDate(n.due, n.time);
     if (e && d && e > d) warn = `<span class="warn">⚠ 预计晚于 deadline</span>`;
     h += `<div class="panel"><div class="half-box">
-      <div class="lab">◐ 进度</div>
+      <div class="lab">进度</div>
       <textarea rows="1" data-field="progress" placeholder="现在做到哪了？还差什么？">${esc(n.progress)}</textarea>
       <div class="eta">预计完成
-        <input type="date" data-field="eta" value="${esc(n.eta)}">
-        <input type="time" data-field="etaTime" value="${esc(n.etaTime)}">
+        <button class="eta-chip" data-act="eta">${n.eta ? fullDate(n.eta) + (n.etaTime && n.etaTime !== '23:59' ? ' ' + fmt12(n.etaTime) : '') : '选择日期'}</button>
         ${warn}
       </div>
+      ${ui.pick && ui.pick.id === n.id && ui.pick.kind === 'eta' ? pickerHtml(n, 'eta') : ''}
     </div></div>`;
   }
-  if (depth < 2 && open && (hasKids || depth === 0)) {
+  if (open && (hasKids || depth === 0)) {
     h += `<div class="kids">`;
     h += orderKids(n.children).map(c => renderNode(c, depth + 1)).join('');
-    h += `<button class="add" data-act="addChild">${ADD[depth]}</button>`;
+    if (depth < MAXD) h += `<button class="add" data-act="addChild">${ADD[Math.min(depth, 1)]}</button>`;
     h += `</div>`;
-  } else if (hasKids && open) {
-    h += `<div class="kids">${orderKids(n.children).map(c => renderNode(c, depth + 1)).join('')}</div>`;
   }
   return h + `</div>`;
 }
@@ -344,7 +366,12 @@ function renderStats() {
   $('#today').textContent = `今天 ${t.getFullYear()}年${t.getMonth() + 1}月${t.getDate()}日 ${WEEK[t.getDay()]}`;
 }
 
+let rendering = false;
 function render() {
+  if (rendering) return; rendering = true;
+  try { renderInner(); } finally { rendering = false; }
+}
+function renderInner() {
   const list = orderKids(state.items);
   app.innerHTML = list.length ? list.map(n => `<div class="project">${renderNode(n, 0)}</div>`).join('')
     : (state.items.length ? `<div class="empty-state">全部完成了 🎉</div>`
@@ -361,9 +388,97 @@ function render() {
 }
 function autosize(t) { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }
 
+
+/* ---------- date / time picker ---------- */
+const MAXD = 4;
+const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+function fmt12(t) { let h = +t.slice(0, 2); const m = t.slice(3, 5); const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12; return `${h}:${m} ${ap}`; }
+const KEYS = { due: ['due', 'time'], eta: ['eta', 'etaTime'] };
+function parseTyped(s) {
+  s = s.trim(); if (!s) return '';
+  const now = new Date();
+  if (/^(今天|today)$/i.test(s)) return iso(now);
+  if (/^(明天|tomorrow|tmr)$/i.test(s)) { now.setDate(now.getDate() + 1); return iso(now); }
+  let m = s.match(/^(\d{1,2})\s*[\/\-.]\s*(\d{1,2})$/); if (m) return mkDate(m[1], m[2]);
+  m = s.match(/^(\d{1,2})(\d{2})$/); if (m) return mkDate(m[1], m[2]);
+  return parseDate(s).due;
+}
+function pickerHtml(n, kind) {
+  const [dk, tk] = KEYS[kind], date = n[dk], time = n[tk], now = new Date();
+  if (!ui.pick.month) ui.pick.month = date ? date.slice(0, 7) : `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
+  const [Y, M] = ui.pick.month.split('-').map(Number);
+  const first = new Date(Y, M - 1, 1).getDay(), days = new Date(Y, M, 0).getDate(), today = iso(now);
+  let cells = '<span></span>'.repeat(first);
+  for (let d = 1; d <= days; d++) {
+    const v = `${Y}-${pad(M)}-${pad(d)}`;
+    cells += `<button class="${v === date ? 'sel' : ''}${v === today ? ' today' : ''}${v < today ? ' past' : ''}" data-act="pkDay" data-v="${v}">${d}</button>`;
+  }
+  let h12 = 0, mi = -1, ap = '';
+  if (time) { const h = +time.slice(0, 2); mi = +time.slice(3, 5); ap = h >= 12 ? 'PM' : 'AM'; h12 = h % 12 || 12; }
+  const hours = [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(h => `<button class="${h === h12 ? 'on' : ''}" data-act="pkHour" data-v="${h}">${h}</button>`).join('');
+  const mins = [0, 15, 30, 45].map(m => `<button class="${m === mi ? 'on' : ''}" data-act="pkMin" data-v="${m}">:${pad(m)}</button>`).join('');
+  const aps = ['AM', 'PM'].map(a => `<button class="${a === ap ? 'on' : ''}" data-act="pkAP" data-v="${a}">${a}</button>`).join('');
+  const typed = date ? `${+date.slice(5, 7)}/${+date.slice(8, 10)}` : '';
+  return `<div class="picker" data-kind="${kind}">
+    <div class="pk-top"><input class="pk-date" value="${typed}" placeholder="直接输入，如 11/20、Nov 20、明天">
+      <span class="pk-hint">${date ? fullDate(date) : ''}</span></div>
+    <div class="pk-body">
+      <div class="cal">
+        <div class="cal-h"><button data-act="pkPrev">‹</button><b>${Y}年${M}月</b><button data-act="pkNext">›</button></div>
+        <div class="cal-w">${WEEK.map(w => `<span>${w.slice(1)}</span>`).join('')}</div>
+        <div class="cal-g">${cells}</div>
+      </div>
+      <div class="tm">
+        <div class="tm-lab">时间（不选 = 11:59 PM）</div>
+        <div class="tm-g tm-h">${hours}</div>
+        <div class="tm-g tm-m">${mins}</div>
+        <div class="tm-g tm-ap">${aps}</div>
+        <button class="tm-def ${time ? '' : 'on'}" data-act="pkDefTime">默认 11:59 PM</button>
+      </div>
+    </div>
+    <div class="pk-foot">${date ? '<button class="link" data-act="pkClear">清除</button>' : ''}<button class="pk-done" data-act="pkClose">完成</button></div>
+  </div>`;
+}
+function pickAct(act, b, n) {
+  const kind = b.closest('.picker') ? b.closest('.picker').dataset.kind : ui.pick && ui.pick.kind;
+  const [dk, tk] = KEYS[kind];
+  const cur = n[tk];
+  let h = cur ? +cur.slice(0, 2) : 23, m = cur ? +cur.slice(3, 5) : 0;
+  if (!cur) m = 0;
+  const v = b.dataset.v;
+  if (act === 'pkPrev' || act === 'pkNext') {
+    let [Y, M] = ui.pick.month.split('-').map(Number); M += act === 'pkNext' ? 1 : -1;
+    if (M < 1) { M = 12; Y--; } if (M > 12) { M = 1; Y++; }
+    ui.pick.month = `${Y}-${pad(M)}`; return false;
+  }
+  if (act === 'pkDay') { n[dk] = v; return true; }
+  if (act === 'pkHour') { const pm = cur ? h >= 12 : true; h = (+v % 12) + (pm ? 12 : 0); if (![0, 15, 30, 45].includes(m)) m = 0; n[tk] = pad(h) + ':' + pad(m); if (!n[dk]) n[dk] = iso(new Date()); return true; }
+  if (act === 'pkMin') { if (!cur) h = 23; n[tk] = pad(h) + ':' + pad(+v); if (!n[dk]) n[dk] = iso(new Date()); return true; }
+  if (act === 'pkAP') { if (!cur) h = 11; h = h % 12 + (v === 'PM' ? 12 : 0); n[tk] = pad(h) + ':' + pad(m); if (!n[dk]) n[dk] = iso(new Date()); return true; }
+  if (act === 'pkDefTime') { n[tk] = ''; return true; }
+  if (act === 'pkClear') { n[dk] = ''; n[tk] = ''; ui.pick = null; return true; }
+  if (act === 'pkClose') { ui.pick = null; return false; }
+}
+function commitTyped(inp) {
+  if (rendering || !inp.isConnected) return;
+  const id = inp.closest('.node').dataset.id, f = find(id); if (!f) return;
+  const kind = inp.closest('.picker').dataset.kind, d = parseTyped(inp.value);
+  if (!inp.value.trim() || !d) return;
+  f.node[KEYS[kind][0]] = d; ui.pick.month = d.slice(0, 7);
+  save(); render();
+}
+app.addEventListener('input', e => {
+  const inp = e.target; if (!inp.classList.contains('pk-date')) return;
+  const hint = inp.parentNode.querySelector('.pk-hint'), d = parseTyped(inp.value);
+  hint.classList.toggle('bad', !!inp.value.trim() && !d);
+  hint.textContent = !inp.value.trim() ? '' : d ? '→ ' + fullDate(d) + '（回车确认）' : '没看懂，试试 11/20';
+});
+app.addEventListener('keydown', e => { if (e.target.classList.contains('pk-date') && e.key === 'Enter') { e.preventDefault(); commitTyped(e.target); } });
+app.addEventListener('change', e => { if (e.target.classList.contains('pk-date')) commitTyped(e.target); });
+
 /* ---------- actions ---------- */
 function addChild(id) {
-  const f = find(id); if (!f || f.depth >= 2) return;
+  const f = find(id); if (!f || f.depth >= MAXD) return;
   const c = mk(); f.node.children.push(c); f.node.collapsed = false;
   ui.focus = { id: c.id, sel: '.title' };
 }
@@ -387,12 +502,12 @@ app.addEventListener('click', e => {
       break;
     case 'setHalf': n.status = 'half'; ui.focus = { id, sel: '.half-box textarea' }; break;
     case 'collapse': n.collapsed = !n.collapsed; break;
-    case 'due':
-      ui.editDue = ui.editDue === id ? null : id;
+    case 'due': case 'eta':
+      ui.pick = ui.pick && ui.pick.id === id && ui.pick.kind === act ? null : { id, kind: act, month: '' };
       break;
-    case 'closeDue': ui.editDue = null; break;
-    case 'clearTime': n.time = ''; break;
-    case 'clearDue': n.due = ''; n.time = ''; ui.editDue = null; break;
+    case 'pkPrev': case 'pkNext': case 'pkDay': case 'pkHour': case 'pkMin': case 'pkAP': case 'pkDefTime': case 'pkClear': case 'pkClose':
+      if (!pickAct(act, b, n)) { render(); return; }
+      break;
     case 'menu': ui.menu = ui.menu === id ? null : id; ui.confirmDel = null; render(); return;
     case 'toggleNote':
       n.showNote = !n.showNote; if (!n.showNote) n.note = '';
@@ -406,10 +521,7 @@ app.addEventListener('click', e => {
     default: return;
   }
   save(); render();
-  if (act === 'due' && ui.editDue === id && !n.due) {
-    const inp = app.querySelector(`[data-id="${id}"] .due-edit input[type=date]`);
-    if (inp) { inp.focus(); try { inp.showPicker(); } catch (_) {} }
-  }
+  if ((act === 'due' || act === 'eta') && ui.pick) { const inp = app.querySelector(`[data-id="${id}"] .pk-date`); if (inp && !inp.value) inp.focus(); }
 });
 document.querySelector('[data-act="newProject"]').addEventListener('click', () => {
   const p = mk(); state.items.unshift(p); ui.focus = { id: p.id, sel: '.title' }; save(); render();
