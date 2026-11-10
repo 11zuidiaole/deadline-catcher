@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Deadline 清单</title>
 <style>
 :root{
@@ -48,7 +48,7 @@ h1{font-size:28px;margin:0;letter-spacing:-.02em}
 .half>.row .c-ring{stroke:var(--accent)}
 .c-fill{fill:var(--accent)}
 .c-check{fill:none;stroke:#fff;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
-.title{flex:1;min-width:0;border:0;background:none;outline:none;padding:6px 0}
+.title{flex:1;min-width:0;border:0;background:none;outline:none;padding:6px 0;resize:none;overflow:hidden;line-height:1.4;display:block;height:auto;font:inherit}
 .d0>.row .title{font-size:18px;font-weight:600}
 .done>.row .title{color:var(--muted);text-decoration:line-through;text-decoration-color:#c7c7cc}
 .count{font-size:12px;color:var(--muted);flex:none}
@@ -182,6 +182,23 @@ h1{font-size:28px;margin:0;letter-spacing:-.02em}
 .choice button{text-align:left;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px}
 .choice button:hover{border-color:var(--accent);background:var(--accent-soft)}
 .choice small{display:block;color:var(--muted);font-size:12.5px}
+
+.row::after{content:'';display:none}
+@media (max-width:640px){
+  input,textarea,.pk-date,.field,.title,.note,.half-box textarea,#impText{font-size:16px !important}
+  .d0>.row .title{font-size:18px !important}
+  .row{flex-wrap:wrap;row-gap:0}
+  .row .title{flex:1 1 0;min-width:0}
+  .row .count{order:3}
+  .row .more{order:4;opacity:1}
+  .row::after{display:block;order:9;flex-basis:100%;height:0}
+  .row .due{order:10;margin:-4px 0 6px 52px;font-size:12px;padding:2px 8px}
+  .d0>.row .due{margin-left:54px}
+  .row .due.empty,.row .addsub{display:none}
+  .wrap{padding:20px 12px 60px}
+  .project{padding:10px 10px 6px}
+  .bar{margin-left:40px}
+}
 </style>
 </head>
 <body>
@@ -352,7 +369,7 @@ function renderNode(n, depth) {
   h += `<div class="row ${ui.menu === n.id ? 'menu-open' : ''}">`;
   h += hasKids ? `<button class="caret ${open ? 'open' : ''}" data-act="collapse" title="展开/收起">▶</button>` : `<span class="caret-sp"></span>`;
   h += `<button class="circle" data-act="cycle" title="${STATUS_TIP[n.status]}">${circleSvg(n.status)}</button>`;
-  h += `<input class="title" data-field="title" value="${esc(n.title)}" placeholder="${PH[Math.min(depth, 2)]}">`;
+  h += `<textarea class="title" rows="1" data-field="title" placeholder="${PH[Math.min(depth, 2)]}">${esc(n.title)}</textarea>`;
   if (sc) h += `<span class="count">${fmt(sc.s)}/${sc.total}</span>`;
   if (depth >= 1 && depth < MAXD) h += `<button class="addsub" data-act="addChild" title="把这个 task 再分成小步骤">＋ 子项</button>`;
   h += `<button class="due ${di.cls}" data-act="due">${esc(di.label)}</button>`;
@@ -430,6 +447,7 @@ function renderInner() {
   $('#hideDone').checked = state.prefs.hideDone;
   renderStats();
   app.querySelectorAll('textarea').forEach(autosize);
+  requestAnimationFrame(() => app.querySelectorAll('textarea').forEach(autosize));
   if (ui.focus) {
     const el = app.querySelector(`[data-id="${ui.focus.id}"] ${ui.focus.sel}`);
     ui.focus = null;
@@ -526,6 +544,29 @@ app.addEventListener('input', e => {
 app.addEventListener('keydown', e => { if (e.target.classList.contains('pk-date') && e.key === 'Enter') { e.preventDefault(); commitTyped(e.target); } });
 app.addEventListener('change', e => { if (e.target.classList.contains('pk-date')) commitTyped(e.target); });
 
+
+/* ---------- tap outside = cancel ---------- */
+function isBlank(n) { return !n.title.trim() && !n.children.length && !n.note.trim() && !n.due && n.status === 'todo'; }
+app.addEventListener('focusout', e => {
+  const el = e.target, nodeEl = el.closest && el.closest('.node'); if (!nodeEl) return;
+  const id = nodeEl.dataset.id;
+  if (!el.classList.contains('title') && !el.classList.contains('note')) return;
+  const isNote = el.classList.contains('note');
+  setTimeout(() => {
+    const f = find(id); if (!f) return;
+    const a = document.activeElement;
+    if (a && a !== document.body && a.closest && a.closest(`[data-id="${id}"]`)) return;
+    if ((ui.pick && ui.pick.id === id) || ui.menu === id) return;
+    if (isNote) { if (!f.node.note.trim() && f.node.showNote) { f.node.showNote = false; save(); render(); } return; }
+    if (isBlank(f.node)) { f.list.splice(f.index, 1); save(); render(); }
+  }, 200);
+});
+document.addEventListener('click', e => {
+  if (!ui.pick) return;
+  if (e.target.closest('.picker') || e.target.closest('[data-act="due"],[data-act="eta"]')) return;
+  ui.pick = null; render();
+});
+
 /* ---------- actions ---------- */
 function addChild(id) {
   const f = find(id); if (!f || f.depth >= MAXD) return;
@@ -603,6 +644,7 @@ app.addEventListener('keydown', e => {
   if (!el.classList.contains('title') || e.key !== 'Enter' || e.isComposing) return;
   e.preventDefault();
   const f = find(el.closest('.node').dataset.id); if (!f) return;
+  if (!f.node.title.trim()) return;
   if (f.depth === 0) addChild(f.node.id); else addSiblingAfter(f.node.id);
   save(); render();
 });
