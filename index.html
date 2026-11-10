@@ -92,6 +92,30 @@ h1{font-size:28px;margin:0;letter-spacing:-.02em}
   .kids{margin-left:18px}.d0>.kids{margin-left:10px}
   .panel{margin-left:40px}
 }
+
+.head-btns{display:flex;gap:8px}
+.btn-ghost{border:1px solid #d6d4cd;border-radius:10px;padding:7px 13px;font-size:14px;background:#fff}
+.btn-ghost:hover{background:#f4f3ef}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:flex-start;justify-content:center;z-index:50;overflow:auto;padding:30px 12px}
+.modal-bg.show{display:flex}
+.modal{background:#fff;border-radius:16px;width:100%;max-width:760px;padding:18px 18px 14px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.modal h2{margin:0 0 4px;font-size:18px}
+.modal .tip{color:var(--muted);font-size:13px;margin-bottom:10px}
+.imp-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.imp-grid textarea{width:100%;height:360px;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:13.5px;resize:vertical;background:#faf9f6;outline:none}
+.pv{height:360px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px 10px}
+.pv-row{display:flex;align-items:center;gap:7px;min-height:30px;font-size:14px}
+.pv-row.t{font-weight:700;font-size:15.5px;margin-top:6px}
+.pv-row.k{padding-left:22px}
+.pv-row .circle{width:18px;height:18px}
+.pv-row .txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pv-row.k.done .txt{color:var(--muted);text-decoration:line-through}
+.pv-chip{font-size:12px;padding:1px 8px;border-radius:99px;background:#f1f0ec;color:#55555a;white-space:nowrap}
+.pv-type{font-size:11.5px;color:#2f6fde;white-space:nowrap}
+.pv-empty{color:var(--muted);font-size:13px;padding:20px 4px}
+.modal-foot{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}
+.modal-foot .sum{color:#55555a;font-size:13px;margin-right:auto}
+@media (max-width:640px){.imp-grid{grid-template-columns:1fr}.imp-grid textarea,.pv{height:220px}}
 </style>
 </head>
 <body>
@@ -101,7 +125,7 @@ h1{font-size:28px;margin:0;letter-spacing:-.02em}
       <h1>Deadline</h1>
       <div class="sub"><span id="sync" class="sync">加载中…</span></div>
     </div>
-    <button class="btn-primary" data-act="newProject">＋ 新建项目</button>
+    <div class="head-btns"><button class="btn-ghost" data-act="import">粘贴导入</button><button class="btn-primary" data-act="newProject">＋ 新建项目</button></div>
   </header>
   <div class="stats" id="stats"></div>
   <div class="toolbar">
@@ -110,6 +134,23 @@ h1{font-size:28px;margin:0;letter-spacing:-.02em}
     <span class="legend">点圆圈切换：○ 未开始 → ◐ 进行中 → ● 完成</span>
   </div>
   <div id="app"></div>
+</div>
+
+
+<div class="modal-bg" id="impBg">
+  <div class="modal">
+    <h2>粘贴导入</h2>
+    <div class="tip">从备忘录整段复制过来直接粘贴。课程号 / 粗体行会被当成标题，像 Nov20、Nov 15、11/20、11月20日 这样的日期会变成 deadline（默认 23:59）。右边是预览：点圆圈改完成状态，点「设为标题 / 设为 task」改类型。</div>
+    <div class="imp-grid">
+      <textarea id="impText" placeholder="5559&#10;M7-1 Nov20&#10;Lab6 Nov15&#10;5540&#10;Quiz5 Nov17&#10;Written Proposal Dec1"></textarea>
+      <div class="pv" id="impPv"></div>
+    </div>
+    <div class="modal-foot">
+      <span class="sum" id="impSum"></span>
+      <button class="btn-ghost" id="impCancel">取消</button>
+      <button class="btn-primary" id="impOk">导入</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -393,6 +434,132 @@ function save() {
   catch (e) { setSync('浏览器不允许保存，刷新后会丢失'); }
 }
 setSync('已自动保存在本浏览器');
+
+
+/* ---------- paste import ---------- */
+const MON = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+const pad = x => String(x).padStart(2, '0');
+function mkDate(m, d) {
+  m = +m; d = +d; if (!(m >= 1 && m <= 12 && d >= 1 && d <= 31)) return '';
+  const now = new Date(); let y = now.getFullYear();
+  if (new Date(y, m - 1, d) < new Date(now.getFullYear(), now.getMonth(), now.getDate() - 120)) y++;
+  return `${y}-${pad(m)}-${pad(d)}`;
+}
+function parseDate(s) {
+  let due = '', time = '', rest = s, m;
+  const pats = [
+    [/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*(\d{1,2})(?:st|nd|rd|th)?(?!\d)/i, m => mkDate(MON[m[1].toLowerCase().slice(0,3)], m[2])],
+    [/(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]?/, m => mkDate(m[1], m[2])],
+    [/(?<![\d\/])(?<![Ww][Ee]?[Ee]?[Kk]\.?\s*)(\d{1,2})\/(\d{1,2})(?![\d\/])/, m => mkDate(m[1], m[2])],
+  ];
+  for (const [re, fn] of pats) { m = rest.match(re); if (m) { const d = fn(m); if (d) { due = d; rest = rest.replace(m[0], ' '); break; } } }
+  if (due) {
+    m = rest.match(/(?<!\d)(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i) || rest.match(/(?<!\d)(\d{1,2}):(\d{2})(?!\d)/);
+    if (m) {
+      let h = +m[1]; const mi = +(m[2] || 0); const ap = (m[3] || '').toLowerCase();
+      if (ap === 'pm' && h < 12) h += 12; if (ap === 'am' && h === 12) h = 0;
+      if (h < 24 && mi < 60) { time = pad(h) + ':' + pad(mi); rest = rest.replace(m[0], ' '); }
+    }
+  }
+  rest = rest.replace(/\s+/g, ' ').replace(/^[\s\-–—·,，:：]+|[\s\-–—·,，:：]+$/g, '').trim();
+  return { due, time, rest };
+}
+let impHtml = new Map(), impOv = {};
+function htmlFlags(html) {
+  const map = new Map();
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    doc.body.querySelectorAll('div,p,li,h1,h2,h3,h4').forEach(el => {
+      if (el.querySelector('div,p,li,h1,h2,h3,h4')) return;
+      const t = el.textContent.replace(/\s+/g, ' ').trim(); if (!t) return;
+      let bold = /^H[1-4]$/.test(el.tagName);
+      if (!bold) {
+        const b = [...el.querySelectorAll('b,strong')].map(x => x.textContent).join('').replace(/\s+/g, ' ').trim();
+        bold = b && b === t;
+        if (!bold) { const fs = parseFloat((el.querySelector('[style*="font-size"]') || el).style.fontSize); if (fs >= 18 && el.textContent.trim() === t) bold = true; }
+      }
+      const li = el.closest('li');
+      const checked = !!(li && (/checked|done/i.test(li.className) || li.getAttribute('data-checked') === 'true' || li.getAttribute('aria-checked') === 'true'));
+      map.set(t, { bold, checked });
+    });
+  } catch (e) {}
+  return map;
+}
+function parseLines(text) {
+  const out = [];
+  text.split(/\r?\n/).forEach((raw, i) => {
+    let s = raw.replace(/\s+/g, ' ').trim(); if (!s) return;
+    let type = null, done = false;
+    const mk = s.match(/^(?:[-*•]\s*)?\[( |x|X|✓)\]\s*/) || s.match(/^([☑✅✓✔☐○◯⭕●◉◐]|[-*•])\s*/);
+    if (mk) { type = 'k'; if (/[xX✓✔☑✅●◉]/.test(mk[1])) done = true; s = s.slice(mk[0].length).trim(); }
+    let hdr = false;
+    if (!type) {
+      const hm = s.match(/^#+\s*/); if (hm) { hdr = true; s = s.slice(hm[0].length); }
+    }
+    const f = impHtml.get(raw.replace(/\s+/g, ' ').trim());
+    if (f && f.checked) done = true;
+    if (!type) {
+      if (hdr || (f && f.bold) || /^[A-Za-z]{0,6}\s?\d{3,5}\b/.test(s) || /[:：]$/.test(s)) type = 't';
+      else type = 'k';
+    }
+    const ov = impOv[i] || {};
+    if (ov.type) type = ov.type;
+    if (ov.done !== undefined) done = ov.done;
+    out.push({ i, raw: s.replace(/[:：]$/, ''), type, done });
+  });
+  return out;
+}
+function renderImport() {
+  const rows = parseLines($('#impText').value);
+  let nt = 0, nk = 0, nd = 0, nDue = 0;
+  $('#impPv').innerHTML = rows.length ? rows.map(r => {
+    if (r.type === 't') { nt++; return `<div class="pv-row t"><span class="txt">${esc(r.raw)}</span><button class="pv-type" data-i="${r.i}" data-to="k">设为 task</button></div>`; }
+    nk++; if (r.done) nd++;
+    const p = parseDate(r.raw); if (p.due) nDue++;
+    const chip = p.due ? `<span class="pv-chip">${esc(dayLabel(p.due))} ${p.time || '23:59'}</span>` : '';
+    return `<div class="pv-row k ${r.done ? 'done' : ''}"><button class="circle" data-i="${r.i}" data-done="${r.done ? 0 : 1}">${circleSvg(r.done ? 'done' : 'todo')}</button><span class="txt">${esc(p.rest || r.raw)}</span>${chip}<button class="pv-type" data-i="${r.i}" data-to="t">设为标题</button></div>`;
+  }).join('') : '<div class="pv-empty">把内容粘贴到左边，这里会显示识别结果</div>';
+  $('#impSum').textContent = rows.length ? `${nt} 个标题 · ${nk} 个 task（${nDue} 个有日期，${nd} 个已完成）` : '';
+  $('#impOk').disabled = !rows.length;
+}
+function openImport() { $('#impText').value = ''; impHtml = new Map(); impOv = {}; renderImport(); $('#impBg').classList.add('show'); setTimeout(() => $('#impText').focus(), 30); }
+function closeImport() { $('#impBg').classList.remove('show'); }
+$('#impText').addEventListener('paste', e => {
+  const h = e.clipboardData && e.clipboardData.getData('text/html');
+  if (h) impHtml = htmlFlags(h);
+  impOv = {};
+  setTimeout(renderImport, 0);
+});
+$('#impText').addEventListener('input', () => renderImport());
+$('#impPv').addEventListener('click', e => {
+  const b = e.target.closest('[data-i]'); if (!b) return;
+  const i = +b.dataset.i; impOv[i] = impOv[i] || {};
+  if (b.dataset.to) impOv[i].type = b.dataset.to;
+  if (b.dataset.done !== undefined) impOv[i].done = b.dataset.done === '1';
+  renderImport();
+});
+$('#impCancel').addEventListener('click', closeImport);
+$('#impBg').addEventListener('click', e => { if (e.target.id === 'impBg') closeImport(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#impBg').classList.contains('show')) closeImport(); });
+$('#impOk').addEventListener('click', () => {
+  const rows = parseLines($('#impText').value); if (!rows.length) return;
+  let cur = null;
+  const findProj = t => state.items.find(p => p.title.trim().toLowerCase() === t.trim().toLowerCase());
+  rows.forEach(r => {
+    if (r.type === 't') {
+      cur = findProj(r.raw);
+      if (!cur) { cur = mk(); cur.title = r.raw; state.items.push(cur); }
+      cur.collapsed = false;
+      return;
+    }
+    if (!cur) { cur = findProj('未分类') || (() => { const p = mk(); p.title = '未分类'; state.items.push(p); return p; })(); }
+    const p = parseDate(r.raw), t = mk();
+    t.title = p.rest || r.raw; t.due = p.due; t.time = p.time; t.status = r.done ? 'done' : 'todo';
+    cur.children.push(t);
+  });
+  save(); render(); closeImport();
+});
+document.querySelector('[data-act="import"]').addEventListener('click', openImport);
 
 render();
 </script>
