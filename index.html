@@ -210,6 +210,11 @@ h1{font-size:28px;margin:0;letter-spacing:-.02em}
 .toast span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .toast button{color:#f6c24a;font-weight:600;flex:none}
 @media (max-width:640px){ .due .full{display:none} .due .short{display:inline} }
+
+.noteb{display:none;flex:none;width:28px;height:28px;border-radius:7px;color:var(--muted);place-items:center}
+.noteb svg{width:17px;height:17px}
+.noteb.has{color:var(--accent)}
+@media (max-width:640px){ .row .noteb{display:grid;order:4} .row .more{order:5} }
 </style>
 </head>
 <body>
@@ -386,6 +391,7 @@ function renderNode(n, depth) {
   if (depth >= 1 && depth < MAXD) h += `<button class="addsub" data-act="addChild" title="把这个 task 再分成小步骤">＋ 子项</button>`;
   h += `<button class="due ${di.cls}" data-act="due">${di.cls === 'empty' ? '<span class="full">＋ deadline</span><span class="short">＋ ddl</span>' : esc(di.label)}</button>`;
   h += `<button class="swipe-del" data-act="swipeDel">删除</button>`;
+  h += `<button class="noteb ${n.note ? 'has' : ''}" data-act="noteBtn" title="说明"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h8"/></svg></button>`;
   h += `<button class="more" data-act="menu" title="更多">⋯</button>`;
   if (ui.menu === n.id) {
     h += `<div class="menu">`;
@@ -409,7 +415,7 @@ function renderNode(n, depth) {
     if (e && d && e > d) warn = `<span class="warn">⚠ 预计晚于 deadline</span>`;
     h += `<div class="panel"><div class="half-box">
       <div class="lab">进度</div>
-      <textarea rows="1" data-field="progress" placeholder="现在做到哪了？还差什么？">${esc(n.progress)}</textarea>
+      <textarea rows="1" data-field="progress" placeholder="进度说明">${esc(n.progress)}</textarea>
       <div class="eta">预计完成
         <button class="eta-chip" data-act="eta">${n.eta ? fullDate(n.eta) + (n.etaTime && n.etaTime !== '23:59' ? ' ' + fmt12(n.etaTime) : '') : '选择日期'}</button>
         ${warn}
@@ -624,6 +630,11 @@ document.addEventListener('click', e => {
 
 app.addEventListener('keydown', e => {
   const el = e.target;
+  if (el.classList.contains('note') && e.key === 'Backspace' && !e.isComposing && el.value === '') {
+    const f = find(el.closest('.node').dataset.id); if (!f) return;
+    e.preventDefault(); f.node.note = ''; f.node.showNote = false;
+    ui.focus = { id: f.node.id, sel: '.title' }; save(); render(); return;
+  }
   if (!el.classList.contains('title') || e.key !== 'Backspace' || e.isComposing || el.value !== '') return;
   const f = find(el.closest('.node').dataset.id); if (!f || f.node.children.length) return;
   e.preventDefault();
@@ -672,6 +683,10 @@ app.addEventListener('click', e => {
       break;
     case 'addChild': addChild(id); break;
     case 'swipeDel': removeNode(f); break;
+    case 'noteBtn':
+      if (n.showNote && !n.note.trim()) n.showNote = false;
+      else { n.showNote = true; ui.focus = { id, sel: '.note' }; }
+      break;
     case 'delete':
       if (ui.confirmDel !== id) { ui.confirmDel = id; render(); return; }
       removeNode(f); ui.menu = null; ui.confirmDel = null;
