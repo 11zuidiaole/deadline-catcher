@@ -610,8 +610,8 @@ $('#sortDue').addEventListener('change', e => { state.prefs.sortDue = e.target.c
 $('#hideDone').addEventListener('change', e => { state.prefs.hideDone = e.target.checked; save(); render(); });
 
 /* ---------- saving: this browser + Supabase ---------- */
-const SUPA_URL = '';   // 例如 https://abcd.supabase.co
-const SUPA_KEY = '';   // sb_publishable_... （公开的 key，可以放在网页里）
+const SUPA_URL = 'https://jqvguqqcvtassurhuqrs.supabase.co';   // 例如 https://abcd.supabase.co
+const SUPA_KEY = 'sb_publishable_VutfQkyu6XcxGAUT5fA_Eg_g5owXqQR';   // sb_publishable_... （公开的 key，可以放在网页里）
 const SYNC_FLAG = 'ddl-synced-uid';
 let sb = null, sbUser = null, pushTimer = null, pushing = false, pushAgain = false, syncMsg = '';
 function saveLocal() { try { localStorage.setItem(LS, JSON.stringify(state)); return true; } catch (e) { return false; } }
