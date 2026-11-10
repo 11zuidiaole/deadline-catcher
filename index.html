@@ -165,6 +165,23 @@ h1{font-size:28px;margin:0;letter-spacing:-.02em}
 .pk-foot{display:flex;justify-content:flex-end;align-items:center;gap:14px;margin-top:10px}
 .pk-done{background:var(--ink);color:#fff;border-radius:8px;padding:5px 14px;font-size:13.5px}
 .eta-chip{border:1px solid #ecd9a8;background:#fffdf6;border-radius:99px;padding:2px 10px;font-size:13px;color:#8a6a1f}
+
+.modal.small{max-width:430px}
+.field{width:100%;border:1px solid #dedbd3;border-radius:9px;padding:9px 11px;font-size:14.5px;margin-bottom:8px;outline:none;background:#faf9f6}
+.field:focus{border-color:var(--accent);background:#fff}
+.auth-msg{font-size:13px;min-height:18px;color:#8a6a1f}
+.auth-msg.bad{color:var(--red)}
+.foot .sync button{color:#8a6a1f;font-size:12px;text-decoration:underline;text-underline-offset:2px}
+.hist{max-height:380px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+.hist-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-top:1px solid var(--line);font-size:13.5px}
+.hist-row:first-child{border-top:0}
+.hist-row .when{flex:1}
+.hist-row .what{color:var(--muted);font-size:12.5px}
+.hist-row button{font-size:13px;color:#8a6a1f;border:1px solid #ecd9a8;border-radius:99px;padding:2px 10px;background:#fffdf6}
+.choice{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.choice button{text-align:left;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px}
+.choice button:hover{border-color:var(--accent);background:var(--accent-soft)}
+.choice small{display:block;color:var(--muted);font-size:12.5px}
 </style>
 </head>
 <body>
@@ -202,6 +219,39 @@ h1{font-size:28px;margin:0;letter-spacing:-.02em}
   </div>
 </div>
 
+<div class="modal-bg" id="authBg">
+  <div class="modal small">
+    <h2>登录同步</h2>
+    <div class="tip">手机和电脑登录同一个账号，数据会自动同步。第一次用先填邮箱和密码点「注册」。</div>
+    <input class="field" id="authEmail" type="email" placeholder="邮箱" autocomplete="email">
+    <input class="field" id="authPw" type="password" placeholder="密码（至少 6 位）" autocomplete="current-password">
+    <div class="auth-msg" id="authMsg"></div>
+    <div class="modal-foot"><span class="sum"></span>
+      <button class="btn-ghost" id="authCancel">取消</button>
+      <button class="btn-ghost" id="authUp">注册</button>
+      <button class="btn-primary" id="authIn">登录</button>
+    </div>
+  </div>
+</div>
+<div class="modal-bg" id="histBg">
+  <div class="modal small">
+    <h2>历史版本</h2>
+    <div class="tip">每 10 分钟最多存一份，保留最近 200 份。恢复前，现在的内容会先存进历史，恢复错了也能换回来。</div>
+    <div class="hist" id="histList"></div>
+    <div class="modal-foot"><span class="sum"></span><button class="btn-ghost" id="histClose">关闭</button></div>
+  </div>
+</div>
+<div class="modal-bg" id="pickBg">
+  <div class="modal small">
+    <h2>用哪一份数据？</h2>
+    <div class="tip">这台设备上已经有内容，你的账号里也有内容。选一份来用，另一份会存进历史版本，不会丢。</div>
+    <div class="choice">
+      <button id="useCloud">用账号里的<small id="cloudInfo"></small></button>
+      <button id="useLocal">用这台设备上的<small id="localInfo"></small></button>
+    </div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const LS = 'ddl-board-v1';
 let state = { items: [], updatedAt: 0, prefs: { hideDone: false, sortDue: false } };
@@ -559,14 +609,125 @@ app.addEventListener('keydown', e => {
 $('#sortDue').addEventListener('change', e => { state.prefs.sortDue = e.target.checked; save(); render(); });
 $('#hideDone').addEventListener('change', e => { state.prefs.hideDone = e.target.checked; save(); render(); });
 
-/* ---------- saving: this browser ---------- */
-const setSync = t => { $('#sync').textContent = t; };
+/* ---------- saving: this browser + Supabase ---------- */
+const SUPA_URL = '';   // 例如 https://abcd.supabase.co
+const SUPA_KEY = '';   // sb_publishable_... （公开的 key，可以放在网页里）
+const SYNC_FLAG = 'ddl-synced-uid';
+let sb = null, sbUser = null, pushTimer = null, pushing = false, pushAgain = false, syncMsg = '';
+function saveLocal() { try { localStorage.setItem(LS, JSON.stringify(state)); return true; } catch (e) { return false; } }
+function syncLine(msg) {
+  if (msg !== undefined) syncMsg = msg;
+  const el = $('#sync');
+  if (!sb) { el.textContent = '已自动保存在本浏览器'; return; }
+  if (!sbUser) { el.innerHTML = `保存在本浏览器 · <button data-g="login">登录后多设备同步</button>`; return; }
+  el.innerHTML = `${esc(syncMsg || '已同步到云端')} · ${esc(sbUser.email || '')} · <button data-g="history">历史版本</button> · <button data-g="logout">退出</button>`;
+}
 function save() {
   state.updatedAt = Date.now();
-  try { localStorage.setItem(LS, JSON.stringify(state)); setSync('已自动保存在本浏览器'); }
-  catch (e) { setSync('浏览器不允许保存，刷新后会丢失'); }
+  if (!saveLocal() && !sbUser) { $('#sync').textContent = '浏览器不允许保存，刷新后会丢失'; return; }
+  if (sbUser) { clearTimeout(pushTimer); pushTimer = setTimeout(push, 800); syncLine('保存中…'); }
 }
-setSync('已自动保存在本浏览器');
+async function push() {
+  if (!sbUser) return;
+  if (pushing) { pushAgain = true; return; }
+  pushing = true;
+  const { error } = await sb.from('boards').upsert({ user_id: sbUser.id, data: state, updated_at: new Date().toISOString() });
+  pushing = false;
+  if (error) syncLine('同步失败（' + error.message + '），先存在本浏览器');
+  else { try { localStorage.setItem(SYNC_FLAG, sbUser.id); } catch (e) {} syncLine('已同步到云端'); }
+  if (pushAgain) { pushAgain = false; push(); }
+}
+const countItems = d => { let n = 0; const w = l => (l || []).forEach(x => { n++; w(x.children); }); w(d && d.items); return n; };
+const summary = d => `${(d.items || []).length} 个项目 · ${countItems(d)} 条`;
+function whenLabel(t) {
+  const d = new Date(t); if (isNaN(d)) return '';
+  return `${d.getMonth() + 1}月${d.getDate()}日 ${WEEK[d.getDay()]} ${fmt12(pad(d.getHours()) + ':' + pad(d.getMinutes()))}`;
+}
+async function pull(first) {
+  if (!sbUser || pushing) return;
+  const { data, error } = await sb.from('boards').select('data').eq('user_id', sbUser.id).maybeSingle();
+  if (error) { syncLine('读取云端失败（' + error.message + '）'); return; }
+  const remote = data && data.data && Array.isArray(data.data.items) ? data.data : null;
+  let synced = false; try { synced = localStorage.getItem(SYNC_FLAG) === sbUser.id; } catch (e) {}
+  if (!remote) { if (state.items.length) await push(); else syncLine('已同步到云端'); return; }
+  if (first && !synced && state.items.length && JSON.stringify(remote.items) !== JSON.stringify(state.items)) { askWhich(remote); return; }
+  if ((remote.updatedAt || 0) > (state.updatedAt || 0)) {
+    const a = document.activeElement;
+    if (a && a.matches('#app input, #app textarea')) return; // 正在打字，下次再拉
+    state = normalize(remote); saveLocal(); render();
+  } else if ((remote.updatedAt || 0) < (state.updatedAt || 0)) { await push(); return; }
+  try { localStorage.setItem(SYNC_FLAG, sbUser.id); } catch (e) {}
+  syncLine('已同步到云端');
+}
+function askWhich(remote) {
+  $('#cloudInfo').textContent = summary(remote) + (remote.updatedAt ? ' · 最后修改 ' + whenLabel(remote.updatedAt) : '');
+  $('#localInfo').textContent = summary(state) + (state.updatedAt ? ' · 最后修改 ' + whenLabel(state.updatedAt) : '');
+  $('#pickBg').classList.add('show');
+  $('#useCloud').onclick = async () => {
+    $('#pickBg').classList.remove('show');
+    await sb.from('board_history').insert({ user_id: sbUser.id, data: state });
+    state = normalize(remote); saveLocal(); render();
+    try { localStorage.setItem(SYNC_FLAG, sbUser.id); } catch (e) {}
+    syncLine('已同步到云端');
+  };
+  $('#useLocal').onclick = async () => {
+    $('#pickBg').classList.remove('show');
+    await sb.from('board_history').insert({ user_id: sbUser.id, data: remote });
+    state.updatedAt = Date.now(); saveLocal(); push();
+  };
+}
+async function openHistory() {
+  $('#histBg').classList.add('show');
+  const box = $('#histList'); box.innerHTML = '<div class="pv-empty">加载中…</div>';
+  const { data, error } = await sb.from('board_history').select('id, created_at, data').order('id', { ascending: false }).limit(60);
+  if (error) { box.innerHTML = `<div class="pv-empty">读取失败：${esc(error.message)}</div>`; return; }
+  if (!data.length) { box.innerHTML = '<div class="pv-empty">还没有历史版本。改动后过一阵会自动存。</div>'; return; }
+  box.innerHTML = data.map(r => `<div class="hist-row"><span class="when">${whenLabel(r.created_at)}<br><span class="what">${summary(r.data)}</span></span><button data-h="${r.id}">恢复</button></div>`).join('');
+  box.onclick = async e => {
+    const b = e.target.closest('[data-h]'); if (!b) return;
+    const row = data.find(r => String(r.id) === b.dataset.h); if (!row) return;
+    b.textContent = '恢复中…';
+    await sb.from('board_history').insert({ user_id: sbUser.id, data: state });
+    state = normalize(row.data); save(); render();
+    $('#histBg').classList.remove('show');
+  };
+}
+function authMsg(t, bad) { const m = $('#authMsg'); m.textContent = t; m.classList.toggle('bad', !!bad); }
+const zhErr = m => /invalid login/i.test(m) ? '邮箱或密码不对' : /already registered|already exists/i.test(m) ? '这个邮箱已经注册过了，直接点登录' : /password/i.test(m) && /6/.test(m) ? '密码至少 6 位' : /email not confirmed/i.test(m) ? '邮箱还没确认，去邮箱点确认链接' : m;
+async function doAuth(kind) {
+  const email = $('#authEmail').value.trim(), password = $('#authPw').value;
+  if (!email || !password) { authMsg('邮箱和密码都要填', true); return; }
+  authMsg(kind === 'up' ? '注册中…' : '登录中…');
+  const r = kind === 'up' ? await sb.auth.signUp({ email, password }) : await sb.auth.signInWithPassword({ email, password });
+  if (r.error) { authMsg(zhErr(r.error.message), true); return; }
+  if (kind === 'up' && !r.data.session) { authMsg('注册成功！去邮箱点确认链接，然后回来点「登录」。'); return; }
+  $('#authBg').classList.remove('show'); $('#authPw').value = ''; authMsg('');
+}
+document.querySelector('.foot').addEventListener('click', async e => {
+  const b = e.target.closest('[data-g]'); if (!b || !sb) return;
+  if (b.dataset.g === 'login') { $('#authBg').classList.add('show'); setTimeout(() => $('#authEmail').focus(), 30); }
+  if (b.dataset.g === 'history') openHistory();
+  if (b.dataset.g === 'logout') { await sb.auth.signOut(); }
+});
+$('#authIn').addEventListener('click', () => doAuth('in'));
+$('#authUp').addEventListener('click', () => doAuth('up'));
+$('#authPw').addEventListener('keydown', e => { if (e.key === 'Enter') doAuth('in'); });
+$('#authCancel').addEventListener('click', () => $('#authBg').classList.remove('show'));
+$('#histClose').addEventListener('click', () => $('#histBg').classList.remove('show'));
+['authBg', 'histBg'].forEach(id => $('#' + id).addEventListener('click', e => { if (e.target.id === id) e.target.classList.remove('show'); }));
+if (SUPA_URL && SUPA_KEY && window.supabase) {
+  try {
+    sb = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+    sb.auth.onAuthStateChange((ev, session) => {
+      const u = session ? session.user : null, was = sbUser;
+      sbUser = u; syncLine();
+      if (u && (!was || was.id !== u.id)) setTimeout(() => pull(true), 0);
+    });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) pull(false); });
+    window.addEventListener('focus', () => pull(false));
+  } catch (e) { sb = null; }
+}
+syncLine();
 
 
 /* ---------- paste import ---------- */
