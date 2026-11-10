@@ -354,8 +354,8 @@ function circleSvg(s) {
   return '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" class="c-ring"/></svg>';
 }
 const STATUS_TIP = { todo: '未开始（点一下 → 进行中）', half: '进行中（点一下 → 完成）', done: '已完成（点一下 → 重置）' };
-const PH = ['项目标题', 'Task', '子项'];
-const ADD = ['＋ 添加 task', '＋ 添加子项'];
+const PH = ['项目标题', 'Task', 'Subtask'];
+const ADD = ['＋ 添加 task', '＋ 添加 subtask'];
 
 function orderKids(list) {
   let arr = list.slice();
@@ -388,7 +388,7 @@ function renderNode(n, depth) {
   h += `<button class="circle" data-act="cycle" title="${STATUS_TIP[n.status]}">${circleSvg(n.status)}</button>`;
   h += `<textarea class="title" rows="1" data-field="title" placeholder="${PH[Math.min(depth, 2)]}">${esc(n.title)}</textarea>`;
   if (sc) h += `<span class="count">${fmt(sc.s)}/${sc.total}</span>`;
-  if (depth >= 1 && depth < MAXD) h += `<button class="addsub" data-act="addChild" title="把这个 task 再分成小步骤">＋ 子项</button>`;
+  if (depth >= 1 && depth < MAXD) h += `<button class="addsub" data-act="addChild" title="把这个 task 再分成小步骤">＋ subtask</button>`;
   h += `<button class="due ${di.cls}" data-act="due">${di.cls === 'empty' ? '<span class="full">＋ deadline</span><span class="short">＋ ddl</span>' : esc(di.label)}</button>`;
   h += `<button class="swipe-del" data-act="swipeDel">删除</button>`;
   h += `<button class="noteb ${n.note ? 'has' : ''}" data-act="noteBtn" title="说明"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h8"/></svg></button>`;
@@ -399,7 +399,7 @@ function renderNode(n, depth) {
     h += `<button data-act="toggleNote">${n.showNote ? '隐藏说明' : '添加说明'}</button>`;
     h += `<button data-act="due">设置 deadline</button>`;
     if (n.status !== 'half') h += `<button data-act="setHalf">标记为进行中 ◐</button>`;
-    h += `<button class="danger" data-act="delete">${ui.confirmDel === n.id ? '再点一次确认删除' : '删除' + (hasKids ? '（含子项）' : '')}</button>`;
+    h += `<button class="danger" data-act="delete">${ui.confirmDel === n.id ? '再点一次确认删除' : '删除' + (hasKids ? '（含 subtask）' : '')}</button>`;
     h += `</div>`;
   }
   h += `</div>`;
